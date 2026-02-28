@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 import face_recognition
+from mtcnn import MTCNN
 
 
 # ── Visual constants (identical to main_tracker.py) ─────────────────────────
@@ -354,9 +355,15 @@ def parse_arguments() -> argparse.Namespace:
     ap.add_argument(
         "-m", "--model",
         type=str,
-        default="auto",
-        choices=["hog", "cnn", "auto"],
-        help="Detection model: 'hog', 'cnn', or 'auto'.  Default: auto.",
+        default="mtcnn",
+        choices=["mtcnn", "hog", "cnn", "auto"],
+        help="Detection model: 'mtcnn' (default), 'hog', 'cnn', or 'auto'.",
+    )
+    ap.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.85,
+        help="Minimum MTCNN detection confidence (0.0–1.0).  Default: 0.85.",
     )
     ap.add_argument(
         "-o", "--output",
@@ -386,14 +393,16 @@ def main() -> None:
     print(f"  Encodings   : {args.encodings}")
     print(f"  Tolerance   : {args.tolerance}")
     print(f"  Model       : {args.model}")
+    print(f"  Min conf.   : {args.min_confidence}")
     print("=" * 55 + "\n")
 
-    # ── Process ─────────────────────────────────────────────────────────
+    # ── Process ─────────────────────────────────────────────────
     result = process_image(
         image_path=args.image,
         encodings_path=args.encodings,
         tolerance=args.tolerance,
         model=args.model,
+        min_confidence=args.min_confidence,
     )
 
     # ── Console summary ─────────────────────────────────────────────────

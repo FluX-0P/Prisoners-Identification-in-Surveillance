@@ -61,6 +61,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import face_recognition
+from mtcnn import MTCNN
 
 
 # ── Supported image extensions ──────────────────────────────────────────────
@@ -87,12 +88,21 @@ def parse_arguments() -> argparse.Namespace:
     ap.add_argument(
         "-m", "--model",
         type=str,
-        default="hog",
-        choices=["hog", "cnn"],
+        default="mtcnn",
+        choices=["mtcnn", "hog", "cnn"],
         help=(
-            "Face detection model to use.  'hog' is faster on CPU; "
-            "'cnn' is more accurate but requires a CUDA-capable GPU "
-            "(default: hog)"
+            "Face detection model.  'mtcnn' (default) handles pose "
+            "variation best.  Legacy 'hog'/'cnn' options kept for "
+            "compatibility but MTCNN is recommended."
+        ),
+    )
+    ap.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.85,
+        help=(
+            "Minimum MTCNN detection confidence to accept a face "
+            "(0.0–1.0).  Default: 0.85."
         ),
     )
     ap.add_argument(
@@ -161,9 +171,10 @@ def discover_images(dataset_path: str) -> list[tuple[str, str]]:
 
 def encode_dataset(
     image_list: list[tuple[str, str]],
-    model: str = "hog",
+    model: str = "mtcnn",
     num_jitters: int = 1,
     upscale: float = 0.0,
+    min_confidence: float = 0.85,
 ) -> dict:
     """
     Compute 128-d face encodings for every image in the list.
@@ -173,9 +184,13 @@ def encode_dataset(
     image_list : list of (str, str)
         (label, image_path) tuples from `discover_images`.
     model : str
-        Face detection backend — "hog" (CPU) or "cnn" (GPU).
+        Face detection backend — "mtcnn" (default), "hog", or "cnn".
     num_jitters : int
         Re-sampling count per face for encoding stability.
+    upscale : float
+        Upscale factor for small images (0 = auto).
+    min_confidence : float
+        Minimum MTCNN detection confidence (0.0–1.0).
 
     Returns
     -------
@@ -185,7 +200,13 @@ def encode_dataset(
     known_encodings: list[np.ndarray] = []
     known_names: list[str] = []
     skipped = 0
-    MIN_FACE_DIM = 250  # pixels — minimum for reliable HOG detection
+    MIN_FACE_DIM = 250  # pixels — minimum for reliable detection
+
+    # Initialise MTCNN once (outside the image loop)
+    use_mtcnn = (model == "mtcnn")
+    if use_mtcnn:
+        mtcnn_detector = MTCNN()
+        print(f"[INFO] MTCNN detector initialised  (min_confidence={min_confidence})")
 
     total = len(image_list)
     print(f"[INFO] Processing {total} image(s) …\n")
@@ -217,8 +238,18 @@ def encode_dataset(
                 interpolation=cv2.INTER_LINEAR,
             )
 
-        # Detect face locations, then compute encodings
-        boxes = face_recognition.face_locations(image_rgb, model=model)
+        # Detect face locations
+        if use_mtcnn:
+            detections = mtcnn_detector.detect_faces(image_rgb, min_face_size=20)
+            boxes = []
+            for face in detections:
+                if face["confidence"] < min_confidence:
+                    continue
+                x, y, bw, bh = face["box"]
+                x, y = max(0, x), max(0, y)
+                boxes.append((y, x + bw, y + bh, x))  # (top, right, bottom, left)
+        else:
+            boxes = face_recognition.face_locations(image_rgb, model=model)
 
         if len(boxes) == 0:
             print("  [WARN] No face detected — skipping.")
@@ -265,6 +296,7 @@ def main() -> None:
     print(f" Dataset    : {args.dataset}")
     print(f" Output     : {args.output}")
     print(f" Model      : {args.model.upper()}")
+    print(f" Min conf.  : {args.min_confidence}")
     print(f" Jitters    : {args.jitters}")
     print("=" * 65 + "\n")
 
@@ -278,7 +310,7 @@ def main() -> None:
         sys.exit(1)
 
     data = encode_dataset(images, model=args.model, num_jitters=args.jitters,
-                           upscale=args.upscale)
+                           upscale=args.upscale, min_confidence=args.min_confidence)
 
     if len(data["encodings"]) == 0:
         print("[ERROR] No face encodings were generated.  Check your images.")

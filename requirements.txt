@@ -11,3 +11,5 @@ numpy>=1.24.0,<2.0
 imutils>=0.5.4
 tqdm>=4.60.0
 streamlit>=1.30.0
+mtcnn>=0.1.1
+tensorflow>=2.10.0

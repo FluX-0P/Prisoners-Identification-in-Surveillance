@@ -64,7 +64,7 @@
    python main_tracker.py -v input_videos/cctv_clip.mp4
    python main_tracker.py -v input_videos/cctv_clip.mp4 --tolerance 0.45
    python main_tracker.py -v input_videos/cctv_clip.mp4 --skip 3 --save
-   python main_tracker.py -v input_videos/cctv_clip.mp4 --model cnn --scale 1.5
+   python main_tracker.py -v input_videos/cctv_clip.mp4 --model cnn --scale 1.5 
 
 ============================================================================
 """
@@ -79,9 +79,11 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
+from cv2 import dnn_superres
 import numpy as np
 import face_recognition
 import imutils
+from mtcnn import MTCNN
 
 try:
     from tqdm import tqdm
@@ -155,11 +157,22 @@ def parse_arguments() -> argparse.Namespace:
     ap.add_argument(
         "-m", "--model",
         type=str,
-        default="auto",
-        choices=["hog", "cnn", "auto"],
+        default="mtcnn",
+        choices=["mtcnn", "hog", "cnn", "auto"],
         help=(
-            "Face detection model: 'hog' (CPU), 'cnn' (GPU), or 'auto' "
-            "(uses CNN if a CUDA GPU is detected, else HOG).  Default: auto."
+            "Face detection model.  Default: 'mtcnn' (MTCNN — robust to pose "
+            "variation).  Legacy options 'hog', 'cnn', 'auto' are accepted "
+            "but will still use MTCNN."
+        ),
+    )
+    ap.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.85,
+        help=(
+            "Minimum MTCNN detection confidence to accept a face (0.0–1.0). "
+            "Default: 0.85.  Lower values increase recall at the cost of "
+            "more false positive detections."
         ),
     )
     ap.add_argument(
@@ -175,7 +188,7 @@ def parse_arguments() -> argparse.Namespace:
     ap.add_argument(
         "--scale",
         type=float,
-        default=0.5,
+        default=1.0,
         help=(
             "Scale factor for resizing frames before detection. "
             "Values > 1.0 upscale (better detection, slower). "
@@ -204,6 +217,24 @@ def parse_arguments() -> argparse.Namespace:
         help=(
             "Path to a CSV log file recording per-frame detections. "
             "Useful for FAR/FRR analysis.  Example: output/detections.csv"
+        ),
+    )
+    ap.add_argument(
+        "--enhance",
+        action="store_true",
+        help=(
+            "Enable super-resolution pre-processing for low-resolution faces "
+            "(IPD < 60 px).  Uses a lightweight ESPCN x4 model to hallucinate "
+            "missing pixels before encoding, improving cross-resolution matching."
+        ),
+    )
+    ap.add_argument(
+        "--sr-model",
+        type=str,
+        default="ESPCN_x4.pb",
+        help=(
+            "Path to the OpenCV DNN Super-Resolution .pb weights file. "
+            "Default: ESPCN_x4.pb (must be downloaded separately)."
         ),
     )
     return ap.parse_args()
@@ -358,8 +389,29 @@ def process_video(args: argparse.Namespace, data: dict) -> None:
     # ── Resolve 'auto' model selection ──────────────────────────────────
     if args.model == "auto":
         args.model = "cnn" if GPU_AVAILABLE else "hog"
-        print(f"[INFO] Auto-selected model: {args.model.upper()}"
-              f"{' (GPU detected)' if GPU_AVAILABLE else ' (CPU only)'}")
+
+    # ── Initialise super-resolution model (once, outside the frame loop) ─
+    sr = None
+    if args.enhance:
+        try:
+            sr = dnn_superres.DnnSuperResImpl_create()
+            sr.readModel(args.sr_model)
+            sr.setModel("espcn", 4)
+            print(f"[INFO] Super-Resolution enabled  (model={args.sr_model}, scale=4x)")
+        except Exception as e:
+            print(f"[ERROR] Failed to load SR model '{args.sr_model}': {e}")
+            print("        Download it with:")
+            print("        curl -L -o ESPCN_x4.pb https://raw.githubusercontent.com/fannymonori/TF-ESPCN/master/export/ESPCN_x4.pb")
+            sys.exit(1)
+
+    # ── Initialise face detector (once, outside the frame loop) ────────
+    use_mtcnn = (args.model == "mtcnn")
+    mtcnn_detector = None
+    if use_mtcnn:
+        mtcnn_detector = MTCNN()
+        print(f"[INFO] MTCNN detector initialised  (min_confidence={args.min_confidence})")
+    else:
+        print(f"[INFO] Using face_recognition model: {args.model.upper()}")
 
     # ── Open video capture ──────────────────────────────────────────────
     cap = cv2.VideoCapture(args.video)
@@ -378,7 +430,10 @@ def process_video(args: argparse.Namespace, data: dict) -> None:
     print(f"[INFO] Frame skip : every {args.skip} frame(s)")
     print(f"[INFO] Tolerance : {args.tolerance}")
     print(f"[INFO] Detection model : {args.model.upper()}")
+    if use_mtcnn:
+        print(f"[INFO] MTCNN min conf  : {args.min_confidence}")
     print(f"[INFO] Scale factor : {args.scale}")
+    print(f"[INFO] SR enhance   : {'ON (IPD < 60 px)' if args.enhance else 'OFF'}")
     print(f"[INFO] Headless mode : {'Yes (no display)' if HEADLESS else 'No (GUI)'}")
     print()
 
@@ -448,11 +503,36 @@ def process_video(args: argparse.Namespace, data: dict) -> None:
             else:
                 proc_frame = frame
 
-            # Convert BGR → RGB for face_recognition
+            # Convert BGR → RGB for detection and encoding
             rgb = cv2.cvtColor(proc_frame, cv2.COLOR_BGR2RGB)
 
             # Detect face locations
-            boxes = face_recognition.face_locations(rgb, model=args.model)
+            if use_mtcnn:
+                # MTCNN detection (min_face_size passed as stage kwarg).
+                # Wrapped in try/except: ONet can crash with a ValueError
+                # on frames where no candidates survive PNet/RNet.
+                try:
+                    detections = mtcnn_detector.detect_faces(rgb, min_face_size=20)
+                except ValueError:
+                    detections = []
+
+                # Convert MTCNN [x, y, w, h] → (top, right, bottom, left)
+                # and apply confidence filter
+                boxes = []
+                for face in detections:
+                    if face["confidence"] < args.min_confidence:
+                        continue
+                    x, y, w, h = face["box"]
+                    # MTCNN can occasionally return negative offsets; clamp to 0
+                    x, y = max(0, x), max(0, y)
+                    top   = y
+                    right = x + w
+                    bottom = y + h
+                    left  = x
+                    boxes.append((top, right, bottom, left))
+            else:
+                # Legacy HOG / CNN fallback via face_recognition
+                boxes = face_recognition.face_locations(rgb, model=args.model)
 
             # Scale boxes back to original frame coordinates
             if args.scale != 1.0 and boxes:
@@ -469,10 +549,42 @@ def process_video(args: argparse.Namespace, data: dict) -> None:
 
             # Compute encodings for detected faces (reuse rgb on original frame)
             rgb_full = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if (args.scale != 1.0) else rgb
-            face_encodings = face_recognition.face_encodings(
-                rgb_full,
-                known_face_locations=boxes,
-            )
+
+            # ── Super-Resolution conditional pipeline ───────────────
+            face_encodings = []
+            for box in boxes:
+                top_b, right_b, bottom_b, left_b = box
+                face_w = right_b - left_b
+                face_h = bottom_b - top_b
+
+                if sr is not None and face_w < 60:
+                    # Crop the low-res face from the RGB frame
+                    face_crop = rgb_full[
+                        max(0, top_b):bottom_b,
+                        max(0, left_b):right_b,
+                    ]
+                    # Hallucinate missing pixels with ESPCN x4
+                    upscaled_face = sr.upsample(face_crop)
+                    up_h, up_w = upscaled_face.shape[:2]
+                    print(
+                        f"[SR] Enhanced {face_w}x{face_h} face "
+                        f"to {up_w}x{up_h}"
+                    )
+                    # Encode on the upscaled crop (full-image coords)
+                    enc = face_recognition.face_encodings(
+                        upscaled_face,
+                        known_face_locations=[(0, up_w, up_h, 0)],
+                    )
+                else:
+                    # Standard encoding from the full frame
+                    enc = face_recognition.face_encodings(
+                        rgb_full,
+                        known_face_locations=[box],
+                    )
+
+                if enc:
+                    face_encodings.append(enc[0])
+            # ── End SR pipeline ─────────────────────────────────────
 
             # Identify each face
             if face_encodings:
