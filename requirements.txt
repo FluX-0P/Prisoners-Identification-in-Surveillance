@@ -1,0 +1,13 @@
+# Prisoners' Identification in a Surveillance Environment
+# Install:  pip install -r requirements.txt
+#
+# NOTE: face_recognition depends on dlib, which requires CMake and a C++
+# compiler. See README.md for platform-specific instructions.
+
+opencv-python>=4.8.0
+face_recognition>=1.3.0
+dlib>=19.24
+numpy>=1.24.0,<2.0
+imutils>=0.5.4
+tqdm>=4.60.0
+streamlit>=1.30.0
