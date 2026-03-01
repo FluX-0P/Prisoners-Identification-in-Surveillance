@@ -249,7 +249,8 @@ def process_image(
     image_path: str,
     encodings_path: str = "encodings.pkl",
     tolerance: float = 0.50,
-    model: str = "auto",
+    model: str = "mtcnn",
+    min_confidence: float = 0.85,
 ) -> ImageResult:
     """
     Detect and identify faces in a single static image.
@@ -266,16 +267,22 @@ def process_image(
     tolerance : float
         Matching threshold (default: 0.50).
     model : str
-        ``"hog"`` (CPU), ``"cnn"`` (GPU), or ``"auto"`` (detect GPU).
+        Detection model: ``"mtcnn"`` (default, handles pose variation),
+        ``"hog"`` (CPU), or ``"cnn"`` (GPU).
+    min_confidence : float
+        Minimum MTCNN detection confidence (0.0–1.0).
+        Default: 0.85. Only used if model is MTCNN.
 
     Returns
     -------
     ImageResult
         Structured result containing per-face data and the annotated image.
     """
-    # ── Resolve model ───────────────────────────────────────────────────
-    if model == "auto":
-        model = "cnn" if _has_cuda_gpu() else "hog"
+    # ── Initialise MTCNN detector ──────────────────────────────────────
+    use_mtcnn = (model == "mtcnn")
+    mtcnn_detector = None
+    if use_mtcnn:
+        mtcnn_detector = MTCNN()
 
     # ── Load encodings ──────────────────────────────────────────────────
     data = load_encodings(encodings_path)
@@ -290,7 +297,25 @@ def process_image(
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
     # ── Face detection ──────────────────────────────────────────────────
-    boxes = face_recognition.face_locations(image_rgb, model=model)
+    if use_mtcnn:
+        try:
+            detections = mtcnn_detector.detect_faces(image_rgb)
+        except ValueError:
+            detections = []
+        
+        boxes = []
+        for face in detections:
+            if face["confidence"] < min_confidence:
+                continue
+            x, y, w, h = face["box"]
+            x, y = max(0, x), max(0, y)
+            top = y
+            right = x + w
+            bottom = y + h
+            left = x
+            boxes.append((top, right, bottom, left))
+    else:
+        boxes = face_recognition.face_locations(image_rgb, model=model)
 
     # ── Face encoding ───────────────────────────────────────────────────
     encodings = face_recognition.face_encodings(
@@ -354,8 +379,8 @@ def parse_arguments() -> argparse.Namespace:
         "-m", "--model",
         type=str,
         default="mtcnn",
-        choices=["mtcnn", "hog", "cnn", "auto"],
-        help="Detection model: 'mtcnn' (default), 'hog', 'cnn', or 'auto'.",
+        choices=["mtcnn", "hog", "cnn"],
+        help="Detection model: 'mtcnn' (default, robust to pose), 'hog', or 'cnn'.",
     )
     ap.add_argument(
         "--min-confidence",
