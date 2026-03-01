@@ -3,8 +3,6 @@
 """
 ============================================================================
  app.py — Streamlit Web Interface  (v2 — Multi-Tab)
- Project : Prisoners' Identification in a Surveillance Environment
- Author  : Shreyash Dehury
 ============================================================================
 
  Launch:
@@ -29,7 +27,7 @@ import streamlit as st
 
 # ── Page config (must be the first Streamlit call) ──────────────────────────
 st.set_page_config(
-    page_title="Prisoner Identification System",
+    page_title="Criminal Identification System",
     page_icon="🔍",
     layout="wide",
 )
@@ -158,8 +156,7 @@ with st.sidebar:
 #  Main Title
 # ════════════════════════════════════════════════════════════════════════════
 
-st.title("🔍 Prisoners' Identification in a Surveillance Environment")
-st.caption("Author: Shreyash Dehury")
+st.title("🔍 Criminal Identification Using Face Recognition")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -261,7 +258,7 @@ with tab_db:
         st.markdown(
             "Upload a **single face image**.  The person's identity is "
             "automatically derived from the **filename** (e.g. "
-            "`Shreyash_Dehury.jpg` → *Shreyash_Dehury*)."
+            "`John_Doe.jpg` → *John_Doe*)."
         )
 
         # Re-scan so the dropdown is up to date
@@ -518,7 +515,5 @@ with tab_video:
 
 st.divider()
 st.caption(
-    "Prisoners' Identification in a Surveillance Environment  •  "
-    "Shreyash Dehury  •  "
     "Powered by MTCNN / dlib / face_recognition / Streamlit"
 )

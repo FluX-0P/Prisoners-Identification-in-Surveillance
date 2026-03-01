@@ -2,9 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ============================================================================
- process_image.py — Static Image Prisoner Identification
- Project : Prisoners' Identification in a Surveillance Environment
- Author  : Shreyash Dehury
+ process_image.py — Static Image Face Identification
 ============================================================================
 
  PURPOSE
@@ -386,8 +384,7 @@ def main() -> None:
     args = parse_arguments()
 
     print("=" * 55)
-    print(" Prisoners' Identification — Static Image")
-    print(" Author: Shreyash Dehury")
+    print(" Static Image Face Identification")
     print("=" * 55)
     print(f"  Input       : {args.image}")
     print(f"  Encodings   : {args.encodings}")
@@ -430,7 +427,7 @@ def main() -> None:
     # ── Display (unless headless or --no-display) ───────────────────────
     show = not args.no_display and _has_display()
     if show:
-        win = "Prisoner Identification — Static Image"
+        win = "Face Identification — Static Image"
         cv2.namedWindow(win, cv2.WINDOW_NORMAL)
         h, w = result.annotated_image.shape[:2]
         disp_h = min(h, 720)

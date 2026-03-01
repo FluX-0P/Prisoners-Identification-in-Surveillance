@@ -1,4 +1,4 @@
-# Prisoners' Identification in a Surveillance Environment
+# Criminal Identification Using Face Recognition
 # Install:  pip install -r requirements.txt
 #
 # NOTE: face_recognition depends on dlib, which requires CMake and a C++

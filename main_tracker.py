@@ -2,9 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ============================================================================
- main_tracker.py — Prisoner Identification in Surveillance Video
- Project : Prisoners' Identification in a Surveillance Environment
- Author  : Shreyash Dehury
+ main_tracker.py — Surveillance Video Face Identification
 ============================================================================
 
  PURPOSE
@@ -651,7 +649,7 @@ def process_video(args: argparse.Namespace, data: dict) -> None:
         if not HEADLESS:
             # Fit to screen: auto-compute display width on first frame
             if not hasattr(process_video, "_win_created"):
-                win_name = "Prisoner Identification — Surveillance Feed"
+                win_name = "Face Identification — Surveillance Feed"
                 cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
                 if args.display_width > 0:
                     disp_w = args.display_width
@@ -715,8 +713,7 @@ def main() -> None:
     args = parse_arguments()
 
     print("=" * 55)
-    print(" Prisoners' Identification in a Surveillance Environment")
-    print(" Author: Shreyash Dehury")
+    print(" Surveillance Video Face Identification")
     print("=" * 55 + "\n")
 
     data = load_encodings(args.encodings)

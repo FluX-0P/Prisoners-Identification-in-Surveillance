@@ -3,8 +3,6 @@
 """
 ============================================================================
  encode_faces.py — Face Encoding Generator  (v2 — Dual-Mode)
- Project : Prisoners' Identification in a Surveillance Environment
- Author  : Shreyash Dehury
 ============================================================================
 
  PURPOSE
@@ -42,7 +40,7 @@
    python encode_faces.py -d known_faces -o encodings.pkl
 
    # Single append (creates or safely appends)
-   python encode_faces.py --add-image mugshots/Shreyash_Dehury.jpg -o encodings.pkl
+   python encode_faces.py --add-image mugshots/John_Doe.jpg -o encodings.pkl
 
    # Batch with extra options
    python encode_faces.py -d known_faces -o encodings.pkl -j 5 --upscale 2.5
@@ -275,7 +273,7 @@ def single_append(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # ── Derive identity from filename ───────────────────────────────────
-    name = Path(img_path).stem          # e.g. "Shreyash_Dehury"
+    name = Path(img_path).stem          # e.g. "John_Doe"
     print(f"[INFO] Identity derived from filename: {name}")
 
     # ── Read & prepare ──────────────────────────────────────────────────
@@ -447,7 +445,6 @@ def main() -> None:
     # ── Banner ──────────────────────────────────────────────────────────
     print("=" * 65)
     print(" Face Encoding Generator  (v2 — Dual-Mode)")
-    print(" Prisoners' Identification in a Surveillance Environment")
     print("=" * 65)
     print(f" Mode       : {mode}")
     if args.add_image:
