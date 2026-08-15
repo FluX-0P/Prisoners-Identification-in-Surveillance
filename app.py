@@ -86,6 +86,8 @@ def _run(cmd: list[str], timeout: int = 900) -> tuple[bool, str]:
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             env=_subprocess_env(),
             cwd=str(PROJECT_ROOT),
@@ -138,16 +140,37 @@ with st.sidebar:
     st.markdown(f"**Videos found:** {len(mp4_files)}")
 
     if pkl_files:
-        # Quick peek at the selected default db
-        default_pkl = pkl_files[0]
+        # Initialize session state for selected database if not exists
+        if "selected_database" not in st.session_state:
+            st.session_state.selected_database = pkl_files[0]
+        
+        # Ensure selected database is still valid (in case files changed)
+        if st.session_state.selected_database not in pkl_files:
+            st.session_state.selected_database = pkl_files[0]
+        
+        # Database selector in sidebar
+        selected_db = st.selectbox(
+            "Active Database",
+            pkl_files,
+            index=pkl_files.index(st.session_state.selected_database),
+            key="sidebar_db_select",
+            help="Select the database to use across all tabs"
+        )
+        
+        # Update session state when selection changes
+        if selected_db != st.session_state.selected_database:
+            st.session_state.selected_database = selected_db
+            st.rerun()
+        
+        # Display info about the selected database
         try:
-            with open(PROJECT_ROOT / default_pkl, "rb") as _f:
+            with open(PROJECT_ROOT / selected_db, "rb") as _f:
                 _data = pickle.load(_f)
             _n = len(_data.get("encodings", []))
             _ids = len(set(_data.get("names", [])))
-            st.success(f"📋 `{default_pkl}`: **{_n}** encodings, **{_ids}** persons")
+            st.success(f"📋 `{selected_db}`: **{_n}** encodings, **{_ids}** persons")
         except Exception:
-            pass
+            st.warning(f"Could not load database info for `{selected_db}`")
     else:
         st.warning("No `.pkl` database found — create one in **Tab 3**.")
 
@@ -266,11 +289,11 @@ with tab_db:
         if not pkl_files_tab1:
             st.warning("No `.pkl` databases found — create one first.")
         else:
-            selected_pkl = st.selectbox(
-                "Target Database",
-                pkl_files_tab1,
-                key="append_pkl_select",
-            )
+            # Use the globally selected database from sidebar
+            selected_pkl = st.session_state.get("selected_database", pkl_files_tab1[0])
+            
+            st.info(f"🗄️ Target database: **{selected_pkl}**")
+            st.caption("Change database in the sidebar if needed.")
 
             img_file = st.file_uploader(
                 "Upload face image",
@@ -323,9 +346,10 @@ with tab_image:
     if not pkl_files_tab2:
         st.warning("No `.pkl` databases found — create one in the **Database Management** tab.")
     else:
-        selected_pkl_img = st.selectbox(
-            "Encoding Database", pkl_files_tab2, key="img_pkl_select",
-        )
+        # Use the globally selected database from sidebar
+        selected_pkl_img = st.session_state.get("selected_database", pkl_files_tab2[0])
+        
+        st.info(f"🗄️ Using database: **{selected_pkl_img}**")
 
         img_upload = st.file_uploader(
             "Upload a CCTV frame / image",
@@ -408,9 +432,10 @@ with tab_video:
     if not pkl_files_tab3:
         st.warning("No `.pkl` databases found — create one in the **Database Management** tab.")
     else:
-        selected_pkl_vid = st.selectbox(
-            "Encoding Database", pkl_files_tab3, key="vid_pkl_select",
-        )
+        # Use the globally selected database from sidebar
+        selected_pkl_vid = st.session_state.get("selected_database", pkl_files_tab3[0])
+        
+        st.info(f"🗄️ Using database: **{selected_pkl_vid}**")
 
         vid_upload = st.file_uploader(
             "Upload CCTV video (.mp4)",

@@ -26,6 +26,7 @@ Thumbs.db
 # ── Project-specific ───────────────────────────────────────────────────────
 # Generated encodings (large binary — should be regenerated per machine)
 encodings.pkl
+encodings-att.pkl
 
 # Temp directory used by Streamlit frontend
 .tmp/
@@ -41,6 +42,8 @@ input_videos/*.mkv
 
 # Unknown faces captured at runtime
 unknown_faces/
+known_faces/
+SCface_database/
 
 # ── OS files ───────────────────────────────────────────────────────────────
 .DS_Store
